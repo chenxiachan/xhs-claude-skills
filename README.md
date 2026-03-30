@@ -35,7 +35,15 @@ claude /plugin install chenxiachan/xhs-claude-skills
 /xhs https://www.xiaohongshu.com/explore/...
 ```
 
-首次运行会自动引导你完成 **30 秒 Cookie 设置**：Chrome 登录小红书 → F12 控制台粘贴一行代码 → 保存到 `~/cookies.json` → 完成。之后 cookies 过期时 skill 会自动检测并重新引导。
+首次运行会自动引导你完成 **30 秒 Cookie 设置**：
+
+1. 🌐 打开 Chrome → xiaohongshu.com（确保已登录）
+2. 🔧 打开 DevTools Console（F12）
+3. 📋 粘贴 skill 给出的代码 → cookies 自动复制到剪贴板
+4. 💾 保存到 `~/cookies.json`
+5. ✅ 搞定 — 之后每次运行自动使用
+
+> 🔄 Cookies 过期时 skill 会自动检测并重新引导，无需手动检查。
 
 ---
 

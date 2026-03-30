@@ -35,7 +35,15 @@ claude /plugin install chenxiachan/xhs-claude-skills
 /xhs https://www.xiaohongshu.com/explore/...
 ```
 
-On first run, the skill auto-guides you through a **30-second cookie setup**: log into RedNote in Chrome → paste one line in F12 console → save to `~/cookies.json` → done. When cookies expire, the skill detects it and re-prompts automatically.
+On first run, the skill auto-guides you through a **30-second cookie setup**:
+
+1. 🌐 Open Chrome → xiaohongshu.com (make sure you're logged in)
+2. 🔧 Open DevTools Console (F12)
+3. 📋 Paste the snippet the skill gives you → cookies auto-copied to clipboard
+4. 💾 Save to `~/cookies.json`
+5. ✅ Done — all future runs use this automatically
+
+> 🔄 When cookies expire, the skill detects it and re-prompts. No manual checking needed.
 
 ---
 
