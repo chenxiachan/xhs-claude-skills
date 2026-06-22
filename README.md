@@ -11,7 +11,7 @@
 
 ---
 
-一个 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 插件，把小红书帖子一键提取为简洁的 [Obsidian](https://obsidian.md) 笔记。支持图文和视频帖子——视频会自动下载并用本地 whisper 做语音转录。不需要 MCP 服务、无头浏览器或任何后端，只用 cookies + HTTP + 本地模型。
+一个 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 插件，把小红书帖子一键提取为简洁的 [Obsidian](https://obsidian.md) 笔记。支持图文和视频帖子——视频优先使用平台内嵌字幕，无字幕时回退到本地 Whisper 转录；图文帖子支持 OCR 识别图片中的文字内容。不需要 MCP 服务、无头浏览器或任何后端，只用 cookies + HTTP + Claude 多模态。
 
 ---
 
@@ -21,7 +21,7 @@
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code)（本插件的运行环境）
 - [Obsidian](https://obsidian.md)（只需 vault 文件夹存在，不需要 CLI）
-- 视频转录（可选）：`brew install ffmpeg` + `pip install mlx-whisper`
+- 视频转录（可选，仅当视频无内嵌字幕时需要）：`brew install ffmpeg` + `pip install mlx-whisper`
 
 ### 安装插件
 
@@ -52,7 +52,7 @@
 
 | 命令 | 说明 |
 |:-----|:-----|
-| `/xhs <链接>` | 📄 提取单个帖子 — 文字、图片、视频转录 |
+| `/xhs <链接>` | 📄 提取单个帖子 — 文字、图片 OCR、视频字幕/转录 |
 | `/xhs-batch <链接列表>` | 📦 批量提取多个帖子 |
 | `/xhs-analyze [关键词]` | 🔍 分析已保存的帖子 — 总结、对比、发现模式 |
 
@@ -104,10 +104,11 @@ xhs/
  └────┬──────┬──────┬──────┘
       ▼      ▼      ▼
     文字    图片    视频
-                     │
-                curl → ffmpeg → mlx-whisper
-                     │
-                     ▼
+              │      │
+          curl+Read  ├→ 平台字幕（优先）
+          多模态OCR   └→ Whisper（回退）
+              │      │
+              ▼      ▼
               Obsidian 笔记
 ```
 

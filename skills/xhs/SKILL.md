@@ -1,6 +1,6 @@
 ---
 name: xhs
-description: 提取小红书帖子内容（文字、图片、视频转录），整理为 Markdown 并保存
+description: 提取小红书帖子内容（文字、图片 OCR、视频字幕/转录），整理为 Markdown 并保存
 user-invocable: true
 argument-hint: <小红书链接>
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep
@@ -69,36 +69,115 @@ data = json.loads(raw)
 
 如果请求失败（被重定向到 404/错误页），说明 cookies 过期，提示用户按步骤 0 重新导出。
 
-### 步骤 3：视频转录（仅视频帖子）
-如果帖子 type 为 video，执行以下子步骤：
+### 步骤 3：视频内容提取（仅视频帖子）
+如果帖子 type 为 video，**优先使用平台内嵌字幕**，仅在无字幕时回退到本地 Whisper 转录。
 
-#### 3a. 提取视频 URL
-从步骤 2 获取的数据中解析视频流：
+#### 3a. 检查平台字幕（优先）
+从步骤 2 获取的视频数据中检查是否有内嵌字幕：
+```
+note['video']['media'] 或 note['video']['mediaV2']（JSON 字符串，需二次解析）
+-> 查找 subtitles 字段
+-> 优先级：source > zh-CN > en-US
+-> 取对应语言的 SRT URL
+```
+
+如果找到字幕 URL：
+```bash
+# 注意：字幕 CDN 域名必须使用 HTTPS（HTTP 可能超时）
+curl -sL --connect-timeout 10 -o /tmp/xhs_{post_id}.srt \
+  -H "User-Agent: Mozilla/5.0" \
+  -H "Referer: https://www.xiaohongshu.com/" \
+  "<字幕URL（确保 https://）>"
+```
+
+解析 SRT 文件，合并为连续文本（去除时间戳和序号），按语义断句重新组织段落。
+字幕比 Whisper 转录更准确，且无需下载视频，**应优先使用**。
+
+#### 3b. Whisper 转录（回退方案）
+仅当步骤 3a 未找到字幕时，执行以下子步骤：
+
+**提取视频 URL：**
 ```
 note['video']['media']['stream'] -> 按 h264 > h265 > av1 优先级取第一个的 masterUrl
 ```
 
-#### 3b. 下载视频并提取音频
+**下载视频并提取音频：**
 ```bash
 curl -L -o /tmp/xhs_{post_id}.mp4 -H "Referer: https://www.xiaohongshu.com/" <视频URL>
 ffmpeg -y -i /tmp/xhs_{post_id}.mp4 -vn -acodec pcm_s16le -ar 16000 -ac 1 /tmp/xhs_{post_id}.wav
 ```
 
-#### 3c. 语音转录
+**语音转录：**
 ```python
 import mlx_whisper
 result = mlx_whisper.transcribe("/tmp/xhs_{post_id}.wav",
     path_or_hf_repo="mlx-community/whisper-large-v3-turbo", language="zh", verbose=False)
 ```
 
-#### 3d. 清理转录文本
+#### 3c. 清理转录/字幕文本
 - 去除尾部重复字符（背景音乐噪音）
 - 按语义断句，添加标点和段落
 - 如有步骤/要点结构，用 Markdown 格式化
 
-#### 3e. 清理临时文件
+#### 3d. 清理临时文件
 ```bash
-rm -f /tmp/xhs_{post_id}.mp4 /tmp/xhs_{post_id}.wav
+rm -f /tmp/xhs_{post_id}.mp4 /tmp/xhs_{post_id}.wav /tmp/xhs_{post_id}.srt
+```
+
+### 步骤 3B：图片文字识别（仅图文帖子）
+如果帖子 type 为 normal（图文帖子），且图片中可能包含大量文字内容（如长文截图、PPT 翻拍、信息图表等），执行以下子步骤进行 OCR 识别。
+
+**判断是否需要 OCR：** 如果帖子 `desc` 已经包含完整的文章内容（超过 500 字），通常不需要 OCR。但如果 `desc` 较短（如仅有标题或几句引言），而图片数量较多（≥3 张），则图片很可能是文章的载体，需要 OCR 提取。
+
+#### 3B-a. 下载图片
+从步骤 2 获取的 `imageList` 中提取每张图片的 `urlDefault` URL。
+
+**关键：必须将 HTTP URL 改为 HTTPS**（HTTP 连接小红书图片 CDN 可能超时）。
+
+使用 curl 批量下载：
+```bash
+# 单张下载
+curl -sL --connect-timeout 10 -o /tmp/xhs_{post_id}_img_{序号}.jpg \
+  -H "Referer: https://www.xiaohongshu.com/" \
+  -H "User-Agent: Mozilla/5.0" \
+  "<图片URL（http:// 替换为 https://）>"
+
+# 批量下载（curl 多输出模式，一条命令下载所有图片）
+curl -sL --connect-timeout 10 \
+  -H "Referer: https://www.xiaohongshu.com/" \
+  -H "User-Agent: Mozilla/5.0" \
+  -o /tmp/xhs_{post_id}_img_00.jpg "<URL_0>" \
+  -o /tmp/xhs_{post_id}_img_01.jpg "<URL_1>" \
+  ...
+```
+
+#### 3B-b. 读取图片文字
+使用 Claude Code 的 `Read` 工具读取每张图片（多模态能力，直接识别图中文字）。
+
+**注意多图限制：** Claude 的多图上下文限制为每张图片最长边 ≤ 2000px。每次最多同时读取 4 张图片，超过 4 张需分批读取。
+
+```
+# 分批读取，每批最多 4 张
+Read /tmp/xhs_{post_id}_img_00.jpg
+Read /tmp/xhs_{post_id}_img_01.jpg
+Read /tmp/xhs_{post_id}_img_02.jpg
+Read /tmp/xhs_{post_id}_img_03.jpg
+# （下一批）
+Read /tmp/xhs_{post_id}_img_04.jpg
+...
+```
+
+从每张图片中提取所有中文/英文文字内容，按图片顺序拼接为完整文章。
+
+#### 3B-c. 整理 OCR 文本
+- 合并所有图片的文字为连续文章
+- 修复跨图片的断句（上一张图最后一行可能和下一张图第一行是同一句话）
+- 按逻辑结构分节，添加小标题
+- 保留关键数据、引用和结论
+
+#### 3B-d. 清理临时文件
+```bash
+rm -f /tmp/xhs_{post_id}_img_*.jpg
 ```
 
 ### 步骤 4：整理输出并保存
@@ -126,10 +205,11 @@ user 和 project 类型记忆）了解用户背景、研究方向和当前工作
 
 > [!tip]- 详情
 > 帖子核心内容的结构化整理（折叠状态，点开才看到）：
-> - 从 desc 和视频转录中提炼，清理 `#xxx[话题]#` 标记
+> - 从 desc、视频字幕/转录、图片 OCR 文字中提炼，清理 `#xxx[话题]#` 标记
 > - 按逻辑结构分节，保留关键数据和结论
-> - 图片用 `![图N](urlDefault)` 嵌入
-> - 视频帖子在此处放整理后的转录内容
+> - 纯装饰性图片用 `![图N](urlDefault)` 嵌入
+> - 含大量文字的图片：嵌入 OCR 提取的结构化文本（不嵌入图片 URL）
+> - 视频帖子在此处放整理后的字幕/转录内容
 
 > [!info]- 笔记属性
 > - **来源**: 小红书 · 作者名

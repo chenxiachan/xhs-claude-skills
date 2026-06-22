@@ -11,7 +11,7 @@
 
 ---
 
-A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin that extracts [RedNote (小红书)](https://www.xiaohongshu.com) posts into concise [Obsidian](https://obsidian.md) notes. Supports text, images, and video — video posts are automatically downloaded and transcribed locally with whisper. No MCP server, no headless browser, no backend. Just cookies + HTTP + local models.
+A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin that extracts [RedNote (小红书)](https://www.xiaohongshu.com) posts into concise [Obsidian](https://obsidian.md) notes. Supports text, images, and video — video posts use platform-embedded subtitles first (falling back to local Whisper transcription); image posts support OCR to read text from images via Claude's multimodal vision. No MCP server, no headless browser, no backend. Just cookies + HTTP + Claude multimodal.
 
 ---
 
@@ -21,7 +21,7 @@ A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin that extr
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (runtime environment)
 - [Obsidian](https://obsidian.md) (just needs the vault folder — no CLI required)
-- Video transcription (optional): `brew install ffmpeg` + `pip install mlx-whisper`
+- Video transcription (optional, only needed when videos lack embedded subtitles): `brew install ffmpeg` + `pip install mlx-whisper`
 
 ### Install the plugin
 
@@ -52,7 +52,7 @@ On first run, the skill auto-guides you through a **30-second cookie setup**:
 
 | Command | Description |
 |:--------|:------------|
-| `/xhs <url>` | 📄 Extract a single post — text, images, video transcription |
+| `/xhs <url>` | 📄 Extract a single post — text, image OCR, video subtitles/transcription |
 | `/xhs-batch <urls>` | 📦 Batch extract multiple posts |
 | `/xhs-analyze [keyword]` | 🔍 Analyze saved posts — summarize, compare, find patterns |
 
@@ -104,10 +104,12 @@ The "Relevance" line reads from Claude Code's [memory system](https://docs.anthr
  └────┬──────┬──────┬──────┘
       ▼      ▼      ▼
     Text   Images  Video
-                     │
-                curl → ffmpeg → mlx-whisper
-                     │
-                     ▼
+              │      │
+         curl+Read   ├→ Platform subtitles (preferred)
+         multimodal  └→ Whisper (fallback)
+           OCR       │
+              │      │
+              ▼      ▼
               Obsidian note
 ```
 
